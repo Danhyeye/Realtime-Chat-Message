@@ -1,0 +1,96 @@
+import { Request, Response } from "express";
+import Message from "../models/Message";
+import Chat, { IChat } from "../models/Chat";
+import { Server } from "socket.io";
+import { Types } from "mongoose";
+import { IUser } from "../models/User";
+
+export const sendMessage =
+  (io: Server) => async (req: Request, res: Response) => {
+    const { message, senderId, chatId } = req.body;
+    try {
+      const chatMessage = await Message.create({
+        message,
+        sender: senderId,
+        chat: chatId,
+      });
+      await Chat.findByIdAndUpdate(chatId, { latestMessage: chatMessage._id });
+
+      const chat = await Chat.findById(chatId).populate("users", "name email");
+      if (!chat) {
+        return res.status(404).json({ error: "Chat not found" });
+      }
+
+      const users = chat.users as IUser[];
+
+      users.forEach((user) => {
+        const userId = user._id.toString();
+        if (userId !== senderId) {
+          io.to(userId).emit("notification", {
+            message: `You have a new message in chat ${chat.chatName}`,
+          });
+        }
+      });
+
+      io.to(chatId).emit("message", chatMessage);
+      res.status(201).json(chatMessage);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      res.status(500).json({ error: "Error sending message" });
+    }
+  };
+
+export const getMessages = async (req: Request, res: Response) => {
+  const { chatId } = req.params;
+  try {
+    const messages = await Message.find({ chat: chatId });
+    res.status(200).json(messages);
+  } catch (error) {
+    console.error("Error retrieving messages:", error);
+    res.status(500).json({ error: "Error retrieving messages" });
+  }
+};
+
+export const deleteMessage =
+  (io: Server) => async (req: Request, res: Response) => {
+    const { messageId, chatId } = req.body;
+    try {
+      await Message.findByIdAndDelete(messageId);
+      io.to(chatId).emit("messageDeleted", { messageId });
+
+      res.status(200).json({ message: "Message deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      res.status(500).json({ error: "Error deleting message" });
+    }
+  };
+
+export const updateMessage =
+  (io: Server) => async (req: Request, res: Response) => {
+    const { messageId, newMessage } = req.body;
+    try {
+      const updatedMessage = await Message.findByIdAndUpdate(
+        messageId,
+        { message: newMessage },
+        { new: true }
+      ).populate<{ chat: IChat }>("chat");
+
+      if (!updatedMessage) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const chat = updatedMessage.chat;
+      if (!chat) {
+        return res
+          .status(500)
+          .json({ error: "Message does not belong to any chat" });
+      }
+
+      io.to(chat._id.toString()).emit("messageUpdated", updatedMessage);
+
+      res.status(200).json(updatedMessage);
+    } catch (error) {
+      console.error("Error updating message:", error);
+      res.status(500).json({ error: "Error updating message" });
+    }
+  };
