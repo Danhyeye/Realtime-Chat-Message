@@ -70,11 +70,22 @@ export const addToGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, userId } = req.body;
     try {
+      const chat = await Chat.findById(chatId);
+
+      if (!chat) {
+        return res.status(404).json({ error: "Chat not found" });
+      }
+
+      if (chat.users.includes(userId)) {
+        return res.status(400).json({ error: "User is already in the group" });
+      }
+
       const updatedChat = await Chat.findByIdAndUpdate(
         chatId,
         { $push: { users: userId } },
         { new: true }
       );
+
       io.to(userId).emit("addedToGroup", updatedChat);
       io.to(chatId).emit("userAddedToGroup", updatedChat);
 
@@ -89,11 +100,22 @@ export const removeFromGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, userId } = req.body;
     try {
+      const chat = await Chat.findById(chatId);
+
+      if (!chat) {
+        return res.status(404).json({ error: "Chat not found" });
+      }
+
+      if (!chat.users.includes(userId)) {
+        return res.status(200).json({ message: "User is not in the group" });
+      }
+
       const updatedChat = await Chat.findByIdAndUpdate(
         chatId,
         { $pull: { users: userId } },
         { new: true }
       );
+
       io.to(userId).emit("removedFromGroup", updatedChat);
       io.to(chatId).emit("userRemovedFromGroup", updatedChat);
 

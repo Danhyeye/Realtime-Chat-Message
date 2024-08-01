@@ -10,7 +10,9 @@ export interface IUser extends Document {
   password: string;
   bio: string;
   profilePic: string;
-  contacts: Types.ObjectId[];
+  friends: Types.ObjectId[];
+  friendRequests: Types.ObjectId[];
+  blockedUsers: Types.ObjectId[];
   generateAuthToken: () => Promise<string>;
 }
 
@@ -44,7 +46,19 @@ const userSchema: Schema<IUser> = new Schema(
       default:
         "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
     },
-    contacts: [
+    friends: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    friendRequests: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    blockedUsers: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -59,7 +73,6 @@ const userSchema: Schema<IUser> = new Schema(
 userSchema.pre<IUser>("save", async function (next) {
   if (this.isModified("password")) {
     this.password = await bcrypt.hash(this.password, 12);
-    console.log("Hashed password in pre-save hook:", this.password);
   }
   next();
 });
@@ -75,7 +88,6 @@ userSchema.methods.generateAuthToken = async function () {
     );
     return token;
   } catch (error) {
-    console.error("Error while generating token:", error);
     throw error;
   }
 };
