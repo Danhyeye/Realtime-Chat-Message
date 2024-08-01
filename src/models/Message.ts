@@ -4,6 +4,10 @@ export interface IMessage extends Document {
   sender: mongoose.Schema.Types.ObjectId;
   message: string;
   chat: mongoose.Schema.Types.ObjectId;
+  reactions: {
+    userId: mongoose.Schema.Types.ObjectId;
+    type: string;
+  }[];
 }
 
 const messageSchema: Schema = new Schema(
@@ -20,6 +24,17 @@ const messageSchema: Schema = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Chat",
     },
+    reactions: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        type: {
+          type: String,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

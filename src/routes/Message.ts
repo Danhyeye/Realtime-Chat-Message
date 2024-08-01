@@ -5,6 +5,7 @@ import {
   sendMessage,
   deleteMessage,
   updateMessage,
+  reactMessage,
 } from "../controllers/Message";
 import { Auth } from "../middleware/auth";
 
@@ -15,6 +16,7 @@ export default (io: Server) => {
   router.get("/:chatId", Auth, getMessages);
   router.delete("/delete", Auth, deleteMessage(io));
   router.put("/update", Auth, updateMessage(io));
+  router.post("/react", Auth, reactMessage(io));
 
   return router;
 };

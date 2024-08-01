@@ -109,3 +109,39 @@ export const updateMessage =
       res.status(500).json({ error: "Error updating message" });
     }
   };
+
+export const reactMessage =
+  (io: Server) => async (req: Request, res: Response) => {
+    const { messageId, userId, type } = req.body;
+
+    try {
+      const message = await Message.findById(messageId);
+
+      if (!message) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+
+      const existingReaction = message.reactions.find(
+        (reaction) =>
+          reaction.userId.toString() === userId && reaction.type === type
+      );
+
+      if (existingReaction) {
+        message.reactions = message.reactions.filter(
+          (reaction) =>
+            !(reaction.userId.toString() === userId && reaction.type === type)
+        );
+      } else {
+        message.reactions.push({ userId, type });
+      }
+
+      await message.save();
+
+      io.to(message.chat.toString()).emit("messageReacted", message);
+
+      res.status(200).json(message);
+    } catch (error) {
+      console.error("Error reacting to message:", error);
+      res.status(500).json({ error: "Error reacting to message" });
+    }
+  };
