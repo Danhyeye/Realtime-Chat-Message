@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
 import http from "http";
 import { Server } from "socket.io";
@@ -72,11 +72,20 @@ app.use("/api/chats", createChatRoutes(io));
 app.use("/api/messages", createMessageRoutes(io));
 app.use("/api/users", userRoutes);
 
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error(err.stack);
+  res.status(500).send({ error: "Something went wrong!" });
+});
+
 const startServer = async () => {
-  await mongoDBConnect();
-  server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
+  try {
+    await mongoDBConnect();
+    server.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+  }
 };
 
 startServer();

@@ -4,11 +4,24 @@ import { Server } from "socket.io";
 
 export const accessChats = async (req: Request, res: Response) => {
   const { userId } = req.body;
+  const { page = 1, limit = 10 } = req.query;
+
   try {
     const chats = await Chat.find({ users: userId })
       .populate("users", "name email")
-      .populate("latestMessage", "message createdAt");
-    res.status(200).json(chats);
+      .populate("latestMessage", "message createdAt")
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+
+    const totalChats = await Chat.countDocuments({ users: userId });
+    const totalPages = Math.ceil(totalChats / Number(limit));
+
+    res.status(200).json({
+      chats,
+      totalPages,
+      currentPage: Number(page),
+      totalChats,
+    });
   } catch (error) {
     console.error("Error accessing chats:", error);
     res.status(500).json({ error: "Error accessing chats" });
@@ -16,11 +29,23 @@ export const accessChats = async (req: Request, res: Response) => {
 };
 
 export const fetchAllChats = async (req: Request, res: Response) => {
+  const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
   try {
     const chats = await Chat.find()
       .populate("users", "name email")
-      .populate("latestMessage", "message createdAt");
-    res.status(200).json(chats);
+      .populate("latestMessage", "message createdAt")
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+
+    const totalChats = await Chat.countDocuments();
+    const totalPages = Math.ceil(totalChats / Number(limit));
+
+    res.status(200).json({
+      chats,
+      totalPages,
+      currentPage: Number(page),
+      totalChats,
+    });
   } catch (error) {
     console.error("Error fetching all chats:", error);
     res.status(500).json({ error: "Error fetching all chats" });
@@ -51,13 +76,18 @@ export const createGroup =
 export const renameGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, newChatName } = req.body;
+
     try {
       const updatedChat = await Chat.findByIdAndUpdate(
         chatId,
         { chatName: newChatName },
         { new: true }
       );
-      io.to(chatId).emit("groupChatRenamed", updatedChat);
+
+      io.to(chatId).emit("groupChatRenamed", {
+        message: `Group renamed to ${newChatName}`,
+        chat: updatedChat,
+      });
 
       res.status(200).json(updatedChat);
     } catch (error) {
@@ -69,6 +99,7 @@ export const renameGroup =
 export const addToGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, userId } = req.body;
+
     try {
       const chat = await Chat.findById(chatId);
 
@@ -87,7 +118,10 @@ export const addToGroup =
       );
 
       io.to(userId).emit("addedToGroup", updatedChat);
-      io.to(chatId).emit("userAddedToGroup", updatedChat);
+      io.to(chatId).emit("userAddedToGroup", {
+        message: `User ${userId} added to group`,
+        chat: updatedChat,
+      });
 
       res.status(200).json(updatedChat);
     } catch (error) {
@@ -95,10 +129,10 @@ export const addToGroup =
       res.status(500).json({ error: "Error adding user to group chat" });
     }
   };
-
 export const removeFromGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, userId } = req.body;
+
     try {
       const chat = await Chat.findById(chatId);
 
@@ -117,7 +151,10 @@ export const removeFromGroup =
       );
 
       io.to(userId).emit("removedFromGroup", updatedChat);
-      io.to(chatId).emit("userRemovedFromGroup", updatedChat);
+      io.to(chatId).emit("userRemovedFromGroup", {
+        message: `User ${userId} removed from group`,
+        chat: updatedChat,
+      });
 
       res.status(200).json(updatedChat);
     } catch (error) {
