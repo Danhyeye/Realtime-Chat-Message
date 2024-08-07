@@ -4,7 +4,7 @@ import { IUser } from "./User";
 export interface IChat extends Document {
   _id: Types.ObjectId;
   photo: string;
-  chatName: string;
+  chatNames: Map<string, string>;
   isGroup: boolean;
   users: (Types.ObjectId | IUser)[];
   latestMessage: Types.ObjectId;
@@ -17,8 +17,9 @@ const chatSchema: Schema<IChat> = new Schema(
       type: String,
       default: "https://cdn-icons-png.flaticon.com/512/9790/9790561.png",
     },
-    chatName: {
-      type: String,
+    chatNames: {
+      type: Map,
+      of: String,
     },
     isGroup: {
       type: Boolean,

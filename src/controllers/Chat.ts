@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Chat, { IChat } from "../models/Chat";
+import { IUser } from "../models/User";
 import { Server } from "socket.io";
 
 export const accessChats = async (req: Request, res: Response) => {
@@ -11,7 +12,14 @@ export const accessChats = async (req: Request, res: Response) => {
       .populate("users", "name email")
       .populate("latestMessage", "message createdAt")
       .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
+    chats.forEach((chat) => {
+      chat.chatNames = {};
+      (chat.users as IUser[]).forEach((user) => {
+        chat.chatNames[user._id.toString()] = user.name;
+      });
+    });
 
     const totalChats = await Chat.countDocuments({ users: userId });
     const totalPages = Math.ceil(totalChats / Number(limit));

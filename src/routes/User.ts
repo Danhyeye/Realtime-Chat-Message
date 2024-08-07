@@ -15,6 +15,7 @@ import {
   removeFriend,
   blockUser,
   unblockUser,
+  getFriends,
 } from "../controllers/User";
 import { Auth } from "../middleware/auth";
 
@@ -35,5 +36,6 @@ router.post("/reject-friend-request", Auth, rejectFriendRequest);
 router.post("/remove-friend", Auth, removeFriend);
 router.post("/block-user", Auth, blockUser);
 router.post("/unblock-user", Auth, unblockUser);
+router.get("/friends/:userId", Auth, getFriends);
 
 export default router;

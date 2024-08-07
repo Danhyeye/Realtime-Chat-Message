@@ -75,7 +75,7 @@ io.on("connection", (socket) => {
 
   socket.on("sendMessage", (message) => {
     io.to(message.chatId).emit("message", message);
-    console.log(`Message sent to chat: ${message.chatId}`);
+    console.log(`Message sent to chat: ${message.message}`);
   });
 
   socket.on("notification", (notification) => {
