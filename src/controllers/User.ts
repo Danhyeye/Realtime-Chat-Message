@@ -1,8 +1,9 @@
-import { AuthRequest } from "../middleware/auth";
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User";
+import Chat from "../models/Chat";
+import { AuthRequest } from "../middleware/authRequest";
 import { Server } from "socket.io";
 
 export const register = async (req: Request, res: Response) => {
@@ -89,14 +90,14 @@ export const googleAuth = async (req: Request, res: Response) => {
   res.status(200).json({ message: "Google authentication placeholder" });
 };
 
-export const searchUsers = async (req: Request, res: Response) => {
-  const { query } = req.body;
+export const searchUsers = async (req: AuthRequest, res: Response) => {
+  const { query } = req.query;
+  const { userId } = req.user!;
+
   try {
     const users = await User.find({
-      $or: [
-        { name: { $regex: query, $options: "i" } },
-        // { email: { $regex: query, $options: "i" } },
-      ],
+      $or: [{ email: { $regex: query, $options: "i" } }],
+      _id: { $ne: userId },
     }).select("id name email profilePic");
     res.status(200).json(users);
   } catch (error) {
@@ -135,109 +136,128 @@ export const updateInfo = async (req: Request, res: Response) => {
 };
 
 export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
-  const { userId, friendId } = req.body;
+  const { userId } = req.user!;
+  const { recipientId } = req.body;
+
   try {
-    const user = await User.findById(userId);
-    const friend = await User.findById(friendId);
-
-    if (!user || !friend) {
-      return res.status(404).json({ error: "User not found" });
+    const recipient = await User.findById(recipientId);
+    if (!recipient) {
+      return res.status(404).json({ error: "Recipient not found" });
     }
 
-    if (friend.friendRequests.includes(userId)) {
-      return res.status(400).json({ error: "Friend request already sent" });
+    if (
+      recipient.friendRequests.includes(userId as any) ||
+      recipient.friends.includes(userId as any)
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Friend request already sent or already friends" });
     }
 
-    if (friend.friends.includes(userId)) {
-      return res.status(400).json({ error: "User is already a friend" });
-    }
+    recipient.friendRequests.push(userId as any);
+    await recipient.save();
 
-    await User.findByIdAndUpdate(
-      friendId,
-      { $push: { friendRequests: userId } },
-      { new: true }
-    );
     res.status(200).json({ message: "Friend request sent" });
   } catch (error) {
     console.error("Error sending friend request:", error);
-    res.status(500).json({ error: "Error sending friend request" });
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+export const getFriendRequests = async (req: AuthRequest, res: Response) => {
+  const { userId } = req.user!;
+
+  try {
+    const user = await User.findById(userId).populate(
+      "friendRequests",
+      "name email profilePic"
+    );
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.status(200).json(user.friendRequests);
+  } catch (error) {
+    console.error("Error retrieving friend requests:", error);
+    res.status(500).json({ error: "Server error" });
   }
 };
 
 export const acceptFriendRequest = async (req: AuthRequest, res: Response) => {
-  const { userId, friendId } = req.body;
-  try {
-    const user = await User.findById(userId); // Find the user who sent the request
-    const friend = await User.findById(friendId); // Find yourself
+  const { userId } = req.user!;
+  const { requesterId } = req.body;
 
-    if (!user || !friend) {
+  try {
+    const user = await User.findById(userId);
+    const requester = await User.findById(requesterId);
+
+    if (!user || !requester) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (req.user?.userId !== friendId) {
-      return res
-        .status(403)
-        .json({ error: "You can only accept requests sent to you" });
+    if (!user.friendRequests.includes(requesterId as any)) {
+      return res.status(400).json({ error: "Friend request not found" });
     }
 
-    if (!friend.friendRequests.includes(userId)) {
-      return res.status(400).json({ error: "No friend request found" });
+    user.friends.push(requesterId as any);
+    requester.friends.push(userId as any);
+
+    user.friendRequests = user.friendRequests.filter(
+      (id) => id.toString() !== requesterId
+    );
+    await user.save();
+    await requester.save();
+    let chat = await Chat.findOne({
+      isGroup: false,
+      users: { $all: [userId, requesterId] },
+    });
+
+    if (!chat) {
+      chat = new Chat({
+        chatName: "Private Chat",
+        isGroup: false,
+        users: [userId, requesterId],
+      });
+      await chat.save();
     }
-
-    await User.findByIdAndUpdate(
-      friendId,
-      { $push: { friends: userId }, $pull: { friendRequests: userId } },
-      { new: true }
-    );
-
-    await User.findByIdAndUpdate(
-      userId,
-      { $push: { friends: friendId } },
-      { new: true }
-    );
-
-    res.status(200).json({ message: "Friend request accepted" });
+    res.status(200).json({ message: "Friend request accepted", chat });
   } catch (error) {
     console.error("Error accepting friend request:", error);
-    res.status(500).json({ error: "Error accepting friend request" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 
 export const rejectFriendRequest = async (req: AuthRequest, res: Response) => {
-  const { userId, friendId } = req.body;
-  try {
-    const user = await User.findById(userId); // Find the user who sent the request
-    const friend = await User.findById(friendId); // Find yourself
+  const { userId } = req.user!;
+  const { requesterId } = req.body;
 
-    if (!user || !friend) {
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (req.user?.userId !== friendId) {
-      return res
-        .status(403)
-        .json({ error: "You can only reject requests sent to you" });
+    if (!user.friendRequests.includes(requesterId as any)) {
+      return res.status(400).json({ error: "Friend request not found" });
     }
 
-    if (!friend.friendRequests.includes(userId)) {
-      return res.status(400).json({ error: "No friend request found" });
-    }
-
-    await User.findByIdAndUpdate(
-      friendId,
-      { $pull: { friendRequests: userId } },
-      { new: true }
+    user.friendRequests = user.friendRequests.filter(
+      (id) => id.toString() !== requesterId
     );
+    await user.save();
 
     res.status(200).json({ message: "Friend request rejected" });
   } catch (error) {
     console.error("Error rejecting friend request:", error);
-    res.status(500).json({ error: "Error rejecting friend request" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 
 export const removeFriend = async (req: AuthRequest, res: Response) => {
-  const { userId, friendId } = req.body;
+  const { userId } = req.user!;
+  const { friendId } = req.body;
+
   try {
     const user = await User.findById(userId);
     const friend = await User.findById(friendId);
@@ -246,92 +266,69 @@ export const removeFriend = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!user.friends.includes(friendId)) {
-      return res.status(400).json({ error: "User is not a friend" });
-    }
+    user.friends = user.friends.filter((id) => id.toString() !== friendId);
+    friend.friends = friend.friends.filter((id) => id.toString() !== userId);
 
-    await User.findByIdAndUpdate(
-      userId,
-      { $pull: { friends: friendId } },
-      { new: true }
-    );
-
-    await User.findByIdAndUpdate(
-      friendId,
-      { $pull: { friends: userId } },
-      { new: true }
-    );
+    await user.save();
+    await friend.save();
 
     res.status(200).json({ message: "Friend removed" });
   } catch (error) {
     console.error("Error removing friend:", error);
-    res.status(500).json({ error: "Error removing friend" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 
 export const blockUser = async (req: AuthRequest, res: Response) => {
-  const { userId, blockId } = req.body;
+  const { userId } = req.user!;
+  const { blockedUserId } = req.body;
+
   try {
     const user = await User.findById(userId);
-    const blockUser = await User.findById(blockId);
+    const blockedUser = await User.findById(blockedUserId);
 
-    if (!user || !blockUser) {
+    if (!user || !blockedUser) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (user.blockedUsers.includes(blockId)) {
-      return res.status(400).json({ error: "User is already blocked" });
+    if (user.blockedUsers.includes(blockedUserId as any)) {
+      return res.status(400).json({ error: "User already blocked" });
     }
 
-    await User.findByIdAndUpdate(
-      userId,
-      { $push: { blockedUsers: blockId } },
-      { new: true }
-    );
-
-    await User.findByIdAndUpdate(
-      userId,
-      { $pull: { friends: blockId, friendRequests: blockId } },
-      { new: true }
-    );
+    user.blockedUsers.push(blockedUserId as any);
+    await user.save();
 
     res.status(200).json({ message: "User blocked" });
   } catch (error) {
     console.error("Error blocking user:", error);
-    res.status(500).json({ error: "Error blocking user" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 
 export const unblockUser = async (req: AuthRequest, res: Response) => {
-  const { userId, unblockId } = req.body;
+  const { userId } = req.user!;
+  const { blockedUserId } = req.body;
+
   try {
     const user = await User.findById(userId);
-    const unblockUser = await User.findById(unblockId);
 
-    if (!user || !unblockUser) {
+    if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!user.blockedUsers.includes(unblockId)) {
-      return res.status(400).json({ error: "User is not blocked" });
+    if (!user.blockedUsers.includes(blockedUserId as any)) {
+      return res.status(400).json({ error: "User not blocked" });
     }
 
-    await User.findByIdAndUpdate(
-      userId,
-      { $pull: { blockedUsers: unblockId, friends: unblockId } },
-      { new: true }
+    user.blockedUsers = user.blockedUsers.filter(
+      (id) => id.toString() !== blockedUserId
     );
+    await user.save();
 
-    await User.findByIdAndUpdate(
-      unblockId,
-      { $pull: { friends: userId } },
-      { new: true }
-    );
-
-    res.status(200).json({ message: "User unblocked and unfriended" });
+    res.status(200).json({ message: "User unblocked" });
   } catch (error) {
     console.error("Error unblocking user:", error);
-    res.status(500).json({ error: "Error unblocking user" });
+    res.status(500).json({ error: "Server error" });
   }
 };
 

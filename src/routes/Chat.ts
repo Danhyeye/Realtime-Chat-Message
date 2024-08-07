@@ -1,4 +1,5 @@
-import express from "express";
+import { Router } from "express";
+import { Auth } from "../middleware/auth";
 import {
   accessChats,
   fetchAllChats,
@@ -7,20 +8,16 @@ import {
   addToGroup,
   removeFromGroup,
 } from "../controllers/Chat";
-import { Server } from "socket.io";
-import { Auth } from "../middleware/auth";
 
-const router = express.Router();
+const router = Router();
 
-const createChatRoutes = (io: Server) => {
+export default (io: any) => {
   router.post("/access", Auth, accessChats);
-  router.get("/", Auth, fetchAllChats);
-  router.post("/create", Auth, createGroup(io));
-  router.put("/rename", Auth, renameGroup(io));
-  router.put("/add", Auth, addToGroup(io));
-  router.put("/remove", Auth, removeFromGroup(io));
+  router.get("/all", Auth, fetchAllChats);
+  router.post("/create-group", Auth, createGroup(io));
+  router.put("/rename-group", Auth, renameGroup(io));
+  router.put("/add-to-group", Auth, addToGroup(io));
+  router.put("/remove-from-group", Auth, removeFromGroup(io));
 
   return router;
 };
-
-export default createChatRoutes;

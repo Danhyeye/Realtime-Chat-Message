@@ -2,41 +2,33 @@ import { Request, Response } from "express";
 import Message from "../models/Message";
 import Chat, { IChat } from "../models/Chat";
 import { Server } from "socket.io";
-import { IUser } from "../models/User";
 
 export const sendMessage =
   (io: Server) => async (req: Request, res: Response) => {
-    const { message, senderId, chatId } = req.body;
+    const { chatId, senderId, message } = req.body;
+
+    if (!chatId || !senderId || !message) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
     try {
-      const chatMessage = await Message.create({
-        message,
-        sender: senderId,
+      const newMessage = new Message({
         chat: chatId,
-      });
-      await Chat.findByIdAndUpdate(chatId, { latestMessage: chatMessage._id });
-
-      const chat = await Chat.findById(chatId).populate("users", "name email");
-      if (!chat) {
-        return res.status(404).json({ error: "Chat not found" });
-      }
-
-      const users = chat.users as IUser[];
-
-      users.forEach((user) => {
-        const userId = user._id.toString();
-        if (userId !== senderId) {
-          io.to(userId).emit("notification", {
-            notificationMessage: `You have a new message in chat ${chat.chatName}`,
-            chatId,
-            message: chatMessage.message,
-            senderId,
-          });
-        }
+        sender: senderId,
+        message,
       });
 
-      io.to(chatId).emit("message", chatMessage);
-      res.status(201).json(chatMessage);
+      const savedMessage = await newMessage.save();
+      const populatedMessage = await savedMessage.populate(
+        "sender",
+        "name profilePic"
+      );
+
+      await Chat.findByIdAndUpdate(chatId, { latestMessage: newMessage });
+
+      io.to(chatId).emit("message", populatedMessage);
+
+      res.status(201).json(populatedMessage);
     } catch (error) {
       console.error("Error sending message:", error);
       res.status(500).json({ error: "Error sending message" });
@@ -45,24 +37,20 @@ export const sendMessage =
 
 export const getMessages = async (req: Request, res: Response) => {
   const { chatId } = req.params;
-  const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+
   try {
     const messages = await Message.find({ chat: chatId })
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("sender", "name profilePic");
 
-    const totalMessages = await Message.countDocuments({ chat: chatId });
-    const totalPages = Math.ceil(totalMessages / Number(limit));
-
-    res.status(200).json({
-      messages,
-      totalPages,
-      currentPage: Number(page),
-      totalMessages,
-    });
+    res.status(200).json({ messages });
   } catch (error) {
-    console.error("Error retrieving messages:", error);
-    res.status(500).json({ error: "Error retrieving messages" });
+    console.error("Error fetching messages:", error);
+    res.status(500).json({ error: "Error fetching messages" });
   }
 };
 
@@ -94,7 +82,7 @@ export const updateMessage =
         return res.status(404).json({ error: "Message not found" });
       }
 
-      const chat = updatedMessage.chat;
+      const chat = updatedMessage.chat as unknown as IChat;
       if (!chat) {
         return res
           .status(500)

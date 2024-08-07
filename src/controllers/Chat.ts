@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import Chat from "../models/Chat";
+import Chat, { IChat } from "../models/Chat";
 import { Server } from "socket.io";
 
 export const accessChats = async (req: Request, res: Response) => {
@@ -29,7 +29,7 @@ export const accessChats = async (req: Request, res: Response) => {
 };
 
 export const fetchAllChats = async (req: Request, res: Response) => {
-  const { page = 1, limit = 10 } = req.query; // Default to page 1 and limit 10
+  const { page = 1, limit = 10 } = req.query;
   try {
     const chats = await Chat.find()
       .populate("users", "name email")
@@ -129,6 +129,7 @@ export const addToGroup =
       res.status(500).json({ error: "Error adding user to group chat" });
     }
   };
+
 export const removeFromGroup =
   (io: Server) => async (req: Request, res: Response) => {
     const { chatId, userId } = req.body;

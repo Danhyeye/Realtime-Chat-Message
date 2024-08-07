@@ -9,6 +9,7 @@ import {
   getUserById,
   updateInfo,
   sendFriendRequest,
+  getFriendRequests,
   acceptFriendRequest,
   rejectFriendRequest,
   removeFriend,
@@ -21,15 +22,16 @@ const router = express.Router();
 
 router.post("/register", register);
 router.post("/login", login);
-router.get("/valid", Auth, validUser);
-router.post("/logout", Auth, logout);
+router.get("/valid-user", Auth, validUser);
+router.get("/logout", Auth, logout);
 router.post("/google-auth", googleAuth);
-router.post("/search", Auth, searchUsers);
-router.get("/:id", Auth, getUserById);
-router.put("/update", Auth, updateInfo);
-router.post("/friend-request", Auth, sendFriendRequest);
-router.post("/accept-friend", Auth, acceptFriendRequest);
-router.post("/reject-friend", Auth, rejectFriendRequest);
+router.get("/search", Auth, searchUsers);
+router.get("/user/:userId", Auth, getUserById);
+router.put("/update-info", Auth, updateInfo);
+router.post("/send-friend-request", Auth, sendFriendRequest);
+router.get("/friend-requests", Auth, getFriendRequests);
+router.post("/accept-friend-request", Auth, acceptFriendRequest);
+router.post("/reject-friend-request", Auth, rejectFriendRequest);
 router.post("/remove-friend", Auth, removeFriend);
 router.post("/block-user", Auth, blockUser);
 router.post("/unblock-user", Auth, unblockUser);
